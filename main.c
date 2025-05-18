@@ -3,22 +3,26 @@
 #include <string.h>
 #include <ctype.h>
 #include <windows.h>
-#define NUM_MAX_PEDIDOS 50
+#define NUM_MAX_PEDIDOS CHAR_M
+#define CHAR_S 30
+#define CHAR_M 60
+#define CHAR_G 120
 
-int num_productos = 0;
-int num_demandas = 0;
-int num_pedidos = 0;
-int num_clientes = 0;
-int num_localidades = 0;
-
-int NUM_MAX_DEMANDAS = 100;
-int NUM_MAX_DIRECCIONES = 5;
+#define NUM_MAX_DEMANDAS 100
 
 //esta puede variar de acuerdo al maximo o minimo de un camion
 int NUM_MAX_CARGA_PESO_KG = 500; 
 int NUM_MAX_CARGA_VOL_M3 = 500;
 
-//prioridad por numero de deamand
+// --------------------------------------------------------------
+
+struct Localidad;
+struct  PedidosxDireccion;
+
+struct Nodo;
+struct Cola;
+
+//prioridad por numero de demanda
 
 //listas de tipo ENUM
 typedef enum {
@@ -33,8 +37,14 @@ typedef enum {
     EN_ESPERA ,EN_CAMINO,COMPLETADO
 } EstadoPedidos;
 
+// -------------------------------
 
 //structs para más clarida de inserción
+typedef struct {
+    int contador_ids;
+    int tam;
+} ColaHeader;
+
 typedef struct {
     float valor;
     Unidad unidad;
@@ -45,32 +55,34 @@ typedef struct {
     float lon;
 } Coordenadas;
 
-struct Localidad;
-struct  PedidosxDireccion;
-
 typedef struct {
     int id;
-    struct Localidad *id_localidad; //*R_Localidad
+    struct Localidad *R_localidad; //*R_Localidad
+    int id_localidad; //*R_Localidad
     int id_cliente;
     int activo; // 1: Activo, 0: Eliminado
-    char calle[50]; //Calle del cliente
-    char numero[20]; //Número exterior/interior (I:1340|E:B-20|)
-    char colonia[50]; //Colonia o barrio
-    char referencias[100]; //Descripción adicional (opcional)
-    struct PedidosxDireccion *historial_pedidos;
+    char calle[CHAR_M]; //Calle del cliente
+    char numero[CHAR_S]; //Número exterior/interior (I:1340|E:B-20|)
+    char colonia[CHAR_M]; //Colonia o barrio
+    char referencias[CHAR_G]; //Descripción adicional (opcional)
+    //struct Cola *historial_pedidos;
 } Direccion; //ordenarlo POR LOCALIDAD
+
+// -------------------------------
 
 //structs CATEGORIA, PRODUCTO, DEMANDA Y PEDIDO
 typedef struct {
     int id;
-    char nombre[50];
+    char nombre[CHAR_M];
     int numxcategoria; //cantidad de productos por categoria
+    int estado; // 0: Inactivo, 1: Activo
 } Categoria;
 
 typedef struct {
     int id;
-    Categoria *id_categoria; //si se elimina una categoria, pasa a ser: SIN CATEGORIA
-    char nombre[50];
+    Categoria *R_categoria; //si se elimina una categoria, pasa a ser: SIN CATEGORIA
+    int id_categoria;
+    char nombre[CHAR_S];
     float valor; //Valor económico
     Medida peso; //En kg o g
     Medida volumen; //En m^3 o cm^3
@@ -105,21 +117,24 @@ Historial de Pedidos del Cliente
     -Se podría usar CountingSort
 */
 
+// -------------------------------
 
 typedef struct {
     int id;
     PedidosxDireccion *pedidos_clientes; //*R_Pedidos_Clientes x Localidad
     int num_pedidosxdireccion;
+    int total_productos;
     float total_valor; //total a ganar
     Medida total_peso; //total de KG/G
     Medida total_volumen; //total de M3/CM3
 } DemandasxLocalidad;
 
-//structs LOCALIDAD y CARRETERA
+//structs LOCALIDAD, CARRETERA y RUTA
 typedef struct Localidad{
     int id;
-    char nombre[50];
+    char nombre[CHAR_M];
     Coordenadas coor;
+    int estado;
 } Localidad;
 
 typedef struct {
@@ -140,6 +155,8 @@ typedef struct {
     int total_distancia;
 } Ruta; //el camión va recorriendo las carreteras en cierto tiempo, llega, pasa cierto tiempo y se marca completado en los pedidos.
 
+// -------------------------------
+
 //structs CAMION y CLIENTE
 typedef struct {
     int id;
@@ -150,32 +167,92 @@ typedef struct {
 } Camion; //COLA
 
 
+// COLAS (Básicos)
+typedef struct Nodo{
+    void *dato;
+    struct Nodo *siguiente;
+} Nodo;
+
+typedef struct Cola{
+    Nodo *frente;
+    Nodo *final;
+    int tam;
+    int contador_ids;  // opcional si tus entidades tienen id
+}Cola;
+
 typedef struct {
     int id;
-    char nombre[50];
-    Direccion *direcciones;
-    int num_direcciones; //cantidad de direcciones que tiene
+    char nombre[CHAR_S];
+    Cola direcciones;
     int num_pedidos; //cantidad de pedidos realizados
 } Cliente; //COLA
 
-
-//SETS de cada 
-
-int set_producto(Producto *lista_productos,char nombre[],float valor, Medida peso, Medida volumen) {
-/*     if (num_productos >= MAX_PRODUCTOS) 
-        return -1; */
-    Producto p;
-    p.id = num_productos;
-    strcpy(p.nombre, nombre); //se copia lo que está en nombre y se pega dentro del mismo struct
-    p.valor = valor;
-    p.peso = peso;
-    p.volumen = volumen;
-    lista_productos[num_productos] = p;
-    return num_productos++; // devuelve ID del producto recién creado
-}
+void limpiar_buffer();
+int leer_float_seguro(float *numero);
+int leer_int_seguro(int *numero);
 
 
-// VALIDACIONES TIPO DE DATO
+int validar_medida(Medida m, const char* campo);
+int es_texto_valido(char texto[],const char* campo);
+int esta_en_rango(float valor, float min, float max, const char* campo);
+void mostrar_unidades_posibles(Unidad opciones[], int num_opciones);
+Medida pedir_medida(Unidad opciones[], int num_opciones, const char* campo);
+Coordenadas pedir_coordenadas();
+
+Categoria* crearCategoria(Cola *cola, char nombre[]);
+int criterioCategoriaPorID(void *dato);
+void mostrarCategoria(void *dato);
+Categoria *buscarCategoria(Cola *colaCat, int idCat);
+void editarCategoriaNombre(void *dato);
+
+Localidad* crearLocalidad(Cola *cola, char nombre[], Coordenadas coor);
+int criterioLocalidadPorID(void *dato);
+void mostrarLocalidad(void *dato);
+Localidad *buscarLocalidad(Cola *colaLoc);
+void editarLocalidad(void *dato);
+
+Producto* crearProducto(Cola *cola, char nombre[], Categoria *R_categoria, float valor, Medida peso, Medida volumen, int stock);
+int criterioProductoPorID(void *dato);
+void mostrarProducto(void *dato);
+void editarProducto(void *dato);
+void eliminarProducto(void *dato);
+void reconstruirReferenciasProducto(Cola *productos, Cola *categorias);
+void limpiarReferenciasProducto(Cola *productos);
+
+Direccion *crearDireccion(Cola *cola, Localidad *localidad, int id_cliente, char calle[], char numero[], char colonia[], char referencias[]);
+int criterioDireccionPorID(void *dato);
+void mostrarDireccion(void *dato);
+void editarDireccion(void *dato, Cola *colaLoc);
+void eliminarDireccion(void *dato);
+void reconstruirReferenciasDireccion(Cola *colaDirecc, Cola *colaLoc);
+void limpiarReferenciasDireccion(Cola *colaDirecc);
+
+Cliente* crearCliente(Cola *cola, char nombre[]);
+int criterioClientePorID(void *dato);
+void mostrarCliente(void *dato);
+Cliente *buscarCliente(Cola *cola, int id_buscar);
+void agregarDireccionesACliente(Cliente *cliente, Cola *colaLoc, Cola *colaDirecc);
+
+
+void inicializarCola(Cola *cola);
+Nodo *encolar(Cola *cola, void *dato, size_t tam_dato);
+void *desencolar(Cola *cola);
+void listarCola(Cola *cola, void (*mostrar)(void *));
+void editarCola(Cola *cola, int (*criterio)(void *), void (*editar)(void *));
+void cargarCola(Cola *cola, const char *nombre_archivo, size_t tam_dato);
+void guardarCola(Cola *cola, const char *nombre_archivo, size_t tam_dato);
+void liberarCola(Cola *cola);
+Nodo *extraerNodoPorCriterio(Cola *cola, int (*criterio)(void *));
+
+int menu_edicion(const char *titulo, const char *campos[], int num_campos);
+const char* obtener_nombre_unidad(Unidad u);
+
+void submenu_categoria(Cola *colaCat);
+void submenu_localidad(Cola*colaLoc);
+
+void menu_admin(Cola *colaCat, Cola *colaLoc, Cola *colaProd);//, Cola *colaCliente, Cola *colaDirecc);
+
+// --------------------------- FUNCIONES PARA EVITAR ERROR DE INSERCION ---------------------------
 
 // Limpia el buffer en caso de entrada incorrecta
 void limpiar_buffer() {
@@ -211,9 +288,7 @@ int leer_int_seguro(int *numero) {
     return 1;
 }
 
-
-
-// VALIDACIONES 
+// --------------------------- VALIDACION INFORMACION ---------------------------
 int validar_medida(Medida m, const char* campo) {
     if (m.valor < 0) {
         printf("❌ Error en %s: valor negativo.\n", campo);
@@ -223,7 +298,7 @@ int validar_medida(Medida m, const char* campo) {
 }
 
 int es_texto_valido(char texto[],const char* campo) {
-    if (strlen(texto)) {
+    if (!strlen(texto)) {
         printf("❌ Error en %s: campo vacio.\n", campo);
         return 0;
     }
@@ -237,7 +312,6 @@ int esta_en_rango(float valor, float min, float max, const char* campo) {
     }
     return 1;
 }
-
 
 void mostrar_unidades_posibles(Unidad opciones[], int num_opciones) {
     printf("Unidades disponibles:\n");
@@ -255,16 +329,15 @@ void mostrar_unidades_posibles(Unidad opciones[], int num_opciones) {
     }
 }
 
-// Función para solicitar y validar la medida
 Medida pedir_medida(Unidad opciones[], int num_opciones, const char* campo) {
     Medida m;
     int unidad_valida = 0;
-    int opcion_seleccionada;
+    int opcion_seleccionada = 0;
 
     do {
         printf("Ingrese el valor de %s: ", campo);
         if (!leer_float_seguro(&m.valor)) {
-            printf("❌ Entrada invalida. Ingrese un numero valido y hagalo de nuevo.\n");
+            printf("❌ Entrada invalida. Ingrese un numero valido.\n");
             continue;
         }
 
@@ -275,7 +348,7 @@ Medida pedir_medida(Unidad opciones[], int num_opciones, const char* campo) {
         mostrar_unidades_posibles(opciones, num_opciones);
         printf("Seleccione la unidad (por numero): ");
         if (!leer_int_seguro(&opcion_seleccionada)) {
-            printf("❌ Entrada invalida. Ingrese un numero valido y hagalo de nuevo.\n");
+            printf("❌ Entrada invalida. Vuelva a INGRESAR TODO.\n");
             continue;
         }
 
@@ -322,18 +395,1000 @@ Coordenadas pedir_coordenadas() {
     return c;
 }
 
+// --------------------------- FUNCIONES CATEGORIA ---------------------------
+Categoria* crearCategoria(Cola *cola, char nombre[]) {
+    Categoria *nuevo = (Categoria *)malloc(sizeof(Categoria));
+    if (!nuevo)
+        return NULL;
+    cola->contador_ids++;
+    nuevo->id = cola->contador_ids;
+    strcpy(nuevo->nombre, nombre);
+    nuevo->estado = 1;
+    nuevo->numxcategoria = 0;
+    return nuevo;
+}
+
+int criterioCategoriaPorID(void *dato) {
+    Categoria *c = (Categoria *)dato;
+    int id;
+    printf("Ingrese el ID de la categoría a editar: ");
+    if (!leer_int_seguro(&id)) {
+        printf("❌ Entrada inválida.\n");
+        return 0;
+    }
+    return c->id == id;
+}
+
+void mostrarCategoria(void *dato) {
+    Categoria *c = (Categoria *)dato;
+    if (c->estado == 1)
+        printf("ID: %d | Nombre: %s\n", c->id, c->nombre);
+}
+
+Categoria *buscarCategoria(Cola *colaCat, int idCat){
+    Nodo *temp = colaCat->frente;
+    while (temp != NULL) {
+        Categoria *c = (Categoria *)temp->dato;
+        if (c->id == idCat) 
+            return c;
+        temp = temp->siguiente;
+    }
+    return NULL;
+}
+
+void editarCategoriaNombre(void *dato) {
+    Categoria *c = (Categoria *)dato;
+    printf("Nuevo nombre de la categoría: ");
+    fgets(c->nombre, sizeof(c->nombre), stdin);
+    c->nombre[strcspn(c->nombre, "\n")] = 0;
+    printf("✅ Nombre actualizado a: %s\n", c->nombre);
+}
+
+// --------------------------- FUNCIONES LOCALIDAD ---------------------------
+Localidad* crearLocalidad(Cola *cola, char nombre[], Coordenadas coor) {
+    Localidad *nuevo = (Localidad *)malloc(sizeof(Localidad));
+    if (!nuevo)
+        return NULL;
+    cola->contador_ids++;
+    nuevo->id = cola->contador_ids;
+    strcpy(nuevo->nombre, nombre);
+    nuevo->coor = coor;
+    nuevo->estado = 1;
+    return nuevo;
+}
+
+int criterioLocalidadPorID(void *dato) {
+    Localidad *c = (Localidad *)dato;
+    int id;
+    printf("Ingrese el ID de la localidad a editar: ");
+    if (!leer_int_seguro(&id)) {
+        printf("❌ Entrada inválida.\n");
+        return 0;
+    }
+    return c->id == id;
+}
+
+void mostrarLocalidad(void *dato) {
+    Localidad *l = (Localidad *)dato;
+    if (l->estado == 1)
+        printf("ID: %d | Nombre: %s | Lat: %.2f | Lon: %.2f\n", l->id, l->nombre, l->coor.lat, l->coor.lon);
+
+}
+
+Localidad *buscarLocalidad(Cola *colaLoc) {
+    listarCola(colaLoc, mostrarLocalidad);
+    int idLoc = 0;
+    Localidad *localidad_encontrada = NULL;
+    while(!localidad_encontrada){
+        printf("Ingrese ID de la localidad:");
+        if (!leer_int_seguro(&idLoc)) 
+            return NULL;
+
+        Nodo *tempL = colaLoc->frente;
+        while (tempL != NULL) {
+            Localidad *l = (Localidad *)tempL->dato;
+            if (l->id == idLoc) {
+                localidad_encontrada = l;
+            }
+            tempL = tempL->siguiente;
+        }
+        if (!localidad_encontrada)
+            printf("❌ Localidad no encontrada.\n");
+    }
+    return localidad_encontrada;
+}
+
+void editarLocalidad(void *dato) {
+    Localidad *l = (Localidad *)dato;
+    int opcion;
+    const char *campos[] = {"nombre", "coordenadas"};
+    do {
+        opcion = menu_edicion(l->nombre,campos,2);
+        if (opcion == -1) continue;
+
+        switch (opcion) {
+            case 1:
+                printf("Nuevo nombre: ");
+                fgets(l->nombre, sizeof(l->nombre), stdin);
+                l->nombre[strcspn(l->nombre, "\n")] = 0;
+                printf("✅ Nombre actualizado.\n");
+                break;
+            case 2:
+                printf("Ingrese nuevas coordenadas:\n");
+                l->coor = pedir_coordenadas();
+                printf("✅ Coordenadas actualizadas.\n");
+                break;
+            case 0:
+                printf("↩ Volviendo al menú anterior.\n");
+                break;
+            default:
+                printf("❌ Opción inválida.\n");
+        }
+    } while (opcion != 0);
+
+    return;
+}
+
+// --------------------------- FUNCIONES PRODUCTO ---------------------------
+Producto* crearProducto(Cola *cola, char nombre[], Categoria *R_categoria, float valor, Medida peso, Medida volumen, int stock) {
+    Producto *nuevo = (Producto *)malloc(sizeof(Producto));
+    if (!nuevo)
+        return NULL;
+    cola->contador_ids++;
+    nuevo->id = cola->contador_ids;
+    strcpy(nuevo->nombre, nombre);
+    nuevo->R_categoria = R_categoria;
+    nuevo->id_categoria = R_categoria->id;
+    nuevo->valor = valor;
+    nuevo->peso = peso;
+    nuevo->volumen = volumen;
+    nuevo->stock = stock;
+    nuevo->estado = 1;
+    return nuevo;
+}
+
+int criterioProductoPorID(void *dato) {
+    Producto *p = (Producto *)dato;
+    int id;
+    printf("Ingrese el ID del producto: ");
+    if (!leer_int_seguro(&id)) {
+        printf("❌ Entrada inválida.\n");
+        return 0;
+    }
+    return p->id == id;
+}
+
+void mostrarProducto(void *dato) {
+    Producto *p = (Producto *)dato;
+    if (p->estado == 1)
+        printf("ID: %d | Nombre: %s | Valor: %.2f | Peso: %.2f %s | Volumen: %.2f %s | Stock: %d | Categoría: %s\n",
+               p->id, p->nombre, p->valor,
+               p->peso.valor, obtener_nombre_unidad(p->peso.unidad),
+               p->volumen.valor, obtener_nombre_unidad(p->volumen.unidad),
+               p->stock, p->R_categoria->nombre);
+}
+
+// Función para editar producto con submenú de campos
+void editarProducto(void *dato) {
+    Producto *p = (Producto *)dato;
+    int opcion;
+    const char *campos[] = {"nombre", "valor", "peso", "volumen", "stock"};
+    do {
+        opcion = menu_edicion(p->nombre, campos, 5);
+        if (opcion == -1) continue;
+
+        switch (opcion) {
+            case 1:
+                printf("Nuevo nombre: ");
+                fgets(p->nombre, sizeof(p->nombre), stdin);
+                p->nombre[strcspn(p->nombre, "\n")] = 0;
+                printf("✅ Nombre actualizado.\n");
+                break;
+            case 2:
+                printf("Nuevo valor económico: ");
+                if (leer_float_seguro(&p->valor)) {
+                    printf("✅ Valor actualizado.\n");
+                } else printf("❌ Entrada inválida.\n");
+                break;
+            case 3:
+                printf("Ingrese nuevo peso:\n");
+                p->peso = pedir_medida((Unidad[]){KG, G}, 2, "Peso");
+                break;
+            case 4:
+                printf("Ingrese nuevo volumen:\n");
+                p->volumen = pedir_medida((Unidad[]){M3, CM3}, 2, "Volumen");
+                break;
+            case 5:
+                printf("Nuevo stock: ");
+                if (leer_int_seguro(&p->stock)) {
+                    printf("✅ Stock actualizado.\n");
+                } else printf("❌ Entrada inválida.\n");
+                break;
+            case 0:
+                printf("↩ Volviendo al menú anterior.\n");
+                break;
+            default:
+                printf("❌ Opción inválida.\n");
+        }
+    } while (opcion != 0);
+}
+
+// Soft delete (cambia estado a inactivo)
+void eliminarProducto(void *dato) {
+    Producto *p = (Producto *)dato;
+    p->estado = 0;
+    printf("🗑️ Producto marcado como inactivo.\n");
+}
+
+
+void reconstruirReferenciasProducto(Cola *productos, Cola *categorias) {
+    if(productos->tam > 0){    
+        Nodo *temp = productos->frente;
+        while (temp != NULL) {
+            Producto *p = (Producto *)temp->dato;
+            p->R_categoria = buscarCategoria(categorias, p->id_categoria);
+            temp = temp->siguiente;
+        }
+    }
+    else
+        puts("No hay productos");
+}
+
+void limpiarReferenciasProducto(Cola *productos) {
+    Nodo *temp = productos->frente;
+    while (temp != NULL) {
+        Producto *p = (Producto *)temp->dato;
+        p->R_categoria = NULL;
+        temp = temp->siguiente;
+    }
+}
+
+
+/*
+// --------------------------- FUNCIONES DIRECCION ---------------------------
+Direccion *crearDireccion(Cola *cola, Localidad *R_localidad, int id_cliente, char calle[], char numero[], char colonia[], char referencias[]) {
+    Direccion *nuevo = (Direccion *)malloc(sizeof(Direccion));
+    cola->contador_ids++;
+    nuevo->id = cola->contador_ids;
+    nuevo->R_localidad = R_localidad;
+    nuevo->id_localidad = R_localidad->id;
+    nuevo->id_cliente = id_cliente;
+    nuevo->activo = 1;
+    nuevo->historial_pedidos = NULL;
+
+    strcpy(nuevo->calle, calle);
+    strcpy(nuevo->numero, numero);
+    strcpy(nuevo->colonia, colonia);
+    strcpy(nuevo->referencias, referencias);
+
+    return nuevo;
+}
+
+int criterioDireccionPorID(void *dato) {
+    Direccion *d = (Direccion *)dato;
+    int id = 0;
+    printf("Ingrese el ID de la dirección: ");
+    if (!leer_int_seguro(&id)) {
+        printf("❌ Entrada inválida.\n");
+        return 0;
+    }
+    return d->id == id && d->activo;
+}
+
+void mostrarDireccion(void *dato) {
+    Direccion *d = (Direccion *)dato;
+    if (d->activo) {
+        printf("\tID Dir: %d | Calle: %s | Número: %s | Colonia: %s | Ref: %s | Cliente ID: %d | Localidad: %s\n",
+               d->id, d->calle, d->numero, d->colonia, d->referencias, d->id_cliente, d->id_localidad->nombre);
+    }
+}
+
+// Función para editar producto con submenú de campos
+void editarDireccion(void *dato, Cola *colaLoc) {
+    Direccion *d = (Direccion *)dato;
+    const char *campos[] = {"localidad","calle", "número", "colonia", "referencias"};
+    int opcion;
+
+    do {
+        opcion = menu_edicion("Dirección", campos, 4);
+        if (opcion == -1) continue;
+
+        switch (opcion) {
+            case 1:
+                printf("Nueva localidad: ");
+                Localidad *loc = buscarLocalidad(colaLoc);
+                d->id_localidad = loc;
+                break;
+            case 2:
+                printf("Nueva calle: ");
+                fgets(d->calle, sizeof(d->calle), stdin);
+                d->calle[strcspn(d->calle, "\n")] = 0;
+                break;
+            case 3:
+                printf("Nuevo número: ");
+                fgets(d->numero, sizeof(d->numero), stdin);
+                d->numero[strcspn(d->numero, "\n")] = 0;
+                break;
+            case 4:
+                printf("Nueva colonia: ");
+                fgets(d->colonia, sizeof(d->colonia), stdin);
+                d->colonia[strcspn(d->colonia, "\n")] = 0;
+                break;
+            case 5:
+                printf("Nuevas referencias: ");
+                fgets(d->referencias, sizeof(d->referencias), stdin);
+                d->referencias[strcspn(d->referencias, "\n")] = 0;
+                break;
+            case 0:
+                printf("↩ Volviendo al menú anterior.\n");
+                break;
+            default:
+                printf("❌ Opción inválida.\n");
+        }
+    } while (opcion != 0);
+}
+
+// Soft delete (cambia estado a inactivo)
+void eliminarDireccion(void *dato) {
+    Direccion *d = (Direccion *)dato;
+    d->activo = 0;
+    printf("🗑️ Dirección marcada como inactiva.\n");
+}
+
+void reconstruirReferenciasDireccion(Cola *colaDirecc, Cola *colaLoc) {
+    if(direcciones->tam > 0){    
+        Nodo *temp = colaDirecc->frente;
+        while (temp != NULL) {
+            Direccion *p = (Direccion *)temp->dato;
+            p->R_localidad = buscarLocalidad(colaLoc, p->id_localidad);
+            temp = temp->siguiente;
+        }
+    }
+    else
+        puts("No hay direcciones");
+}
+
+void limpiarReferenciasDireccion(Cola *colaDirecc) {
+    Nodo *temp = colaDirecc->frente;
+    while (temp != NULL) {
+        DIreccion *p = (Direccion *)temp->dato;
+        p->R_localidad = NULL;
+        temp = temp->siguiente;
+    }
+}
+
+
+
+// --------------------------- FUNCIONES CLIENTE ---------------------------
+Cliente* crearCliente(Cola *cola, char nombre[]) {
+    Cliente *nuevo = (Cliente *)malloc(sizeof(Cliente));
+    cola->contador_ids++;
+    nuevo->id = cola->contador_ids;
+    strcpy(nuevo->nombre, nombre);
+    inicializarCola(&nuevo->direcciones);
+    nuevo->num_pedidos = 0;
+    return nuevo;
+}
+
+int criterioClientePorID(void *dato) {
+    Cliente *c = (Cliente *)dato;
+    int id;
+    printf("Ingrese el ID del cliente: ");
+    if (!leer_int_seguro(&id)) {
+        printf("❌ Entrada inválida.\n");
+        return 0;
+    }
+    return c->id == id;
+}
+
+void mostrarCliente(void *dato) {
+    Cliente *c = (Cliente *)dato;
+    printf("ID Cliente: %d | Nombre: %s\n", c->id, c->nombre);
+
+    if (c->direcciones.tam > 0){
+        listarCola(&c->direcciones,mostrarDireccion);
+    }
+    return;
+    
+}       
+
+Cliente *buscarCliente(Cola *cola, int id_buscar){
+    Nodo *temp = cola->frente;
+    Cliente *cliente_encontrado = NULL;
+    while (temp != NULL) {
+        Cliente *c = (Cliente *)temp->dato;
+        if (c->id == id_buscar) {
+            cliente_encontrado = c;
+            break;
+        }
+        temp = temp->siguiente;
+    }
+    return cliente_encontrado;
+}
+
+void agregarDireccionesACliente(Cliente *cliente, Cola *colaLoc, Cola *colaDirecc) {
+    int num = 0;
+    printf("¿Cuántas direcciones desea ingresar?: ");
+    if (!leer_int_seguro(&num) || num <= 0) {
+        printf("❌ Número inválido.\n");
+        return;
+    }
+
+    if (cliente->direcciones.tam==0) {
+        inicializarCola(&cliente->direcciones);
+        puts("✅ Cola de direcciones inicializada");
+    }
+
+    
+    int aux = 0;
+    while(aux!=num) {
+        char calle[CHAR_M] = {0};
+        char numero[CHAR_S] = {0}; 
+        char colonia[CHAR_M] = {0}; 
+        char referencias[CHAR_G] = {0}; 
+        Localidad *loc = NULL;
+
+        loc = buscarLocalidad(colaLoc);
+        
+        printf("Calle: ");
+        fgets(calle, sizeof(calle), stdin);
+        calle[strcspn(calle, "\n")] = 0;
+        if (!es_texto_valido(calle, "Calle"))
+            continue;
+
+        printf("Número (I:1340|E:B-20|): ");
+        fgets(numero, sizeof(numero), stdin);
+        numero[strcspn(numero, "\n")] = 0;
+        if (!es_texto_valido(numero, "Numero"))
+            continue;
+
+        printf("Colonia: ");
+        fgets(colonia, sizeof(colonia), stdin);
+        colonia[strcspn(colonia, "\n")] = 0;
+        if (!es_texto_valido(colonia, "Colonia"))
+            continue;
+
+        printf("Referencias (opcional): ");
+        fgets(referencias, sizeof(referencias), stdin);
+        referencias[strcspn(referencias, "\n")] = 0;
+
+        Nodo* dir = encolar(colaDirecc, crearDireccion(colaDirecc,loc,cliente->id,calle,numero,colonia,referencias),sizeof(Direccion));
+        if(!dir){
+            printf("❌ ¡Error! No se pudo insertar la direccion.\n");
+        }
+        else{
+            Nodo *d = encolar(&cliente->direcciones,dir->dato,sizeof(Direccion));
+            printf("✅ Se agregó: ");
+            mostrarDireccion(d->dato);
+            puts("");
+        }
+        aux ++;
+    }
+
+    printf("✅ Direcciones agregadas.\n");
+}
+
+
+// Función para editar producto con submenú de campos
+void editarCliente(void *dato) {
+    Cliente *p = (Cliente *)dato;
+    int opcion;
+    const char *campos[] = {"nombre", "direccion"};
+    do {
+        opcion = menu_edicion(p->nombre, campos, 5);
+        if (opcion == -1) continue;
+
+        switch (opcion) {
+            case 1:
+                printf("Nuevo nombre: ");
+                fgets(p->nombre, sizeof(p->nombre), stdin);
+                p->nombre[strcspn(p->nombre, "\n")] = 0;
+                printf("✅ Nombre actualizado.\n");
+                break;
+            case 2:
+                editarCola(&p->direcciones,criterioDireccionPorID,editarDireccion);
+                break;
+            case 0:
+                printf("↩ Volviendo al menú anterior.\n");
+                break;
+            default:
+                printf("❌ Opción inválida.\n");
+        }
+    } while (opcion != 0);
+}*/
+
+// --------------------------- FUNCIONES COLAS ---------------------------
+void inicializarCola(Cola *cola) {
+    cola->frente = NULL;
+    cola->final = NULL;
+    cola->tam = 0;
+    cola->contador_ids = 0;
+}
+
+Nodo *encolar(Cola *cola, void *dato, size_t tam_dato) {
+    if (!dato){
+        return NULL;
+    }
+    Nodo *nuevo = (Nodo *)malloc(sizeof(Nodo));
+    nuevo->dato = malloc(tam_dato);
+    memcpy(nuevo->dato, dato, tam_dato);
+    nuevo->siguiente = NULL;
+
+    if (cola->final == NULL)
+        cola->frente = cola->final = nuevo;
+    else {
+        cola->final->siguiente = nuevo;
+        cola->final = nuevo;
+    }
+
+    cola->tam++;
+    return nuevo;  // ✅ retornamos el puntero al nodo insertado
+}
+
+void *desencolar(Cola *cola) {
+    if (cola->frente == NULL) {
+        printf("⚠ La cola está vacía.\n");
+        return NULL;
+    }
+
+    Nodo *temp = cola->frente;
+    void *dato = temp->dato;
+
+    cola->frente = cola->frente->siguiente;
+    if (cola->frente == NULL)
+        cola->final = NULL;
+
+    free(temp);
+    cola->tam--;
+
+    return dato;  // El dato debe ser procesado antes de ser liberado externamente
+}
+
+void listarCola(Cola *cola, void (*mostrar)(void *)) {
+    Nodo *temp = cola->frente;
+    if (temp == NULL) {
+        printf("📋 La cola está vacía.\n");
+        return;
+    }
+
+    printf("📋 Listado de elementos:\n");
+    while (temp != NULL) {
+        mostrar(temp->dato);
+        temp = temp->siguiente;
+    }
+}
+
+void editarCola(Cola *cola, int (*criterio)(void *), void (*editar)(void *)) {
+    Nodo *temp = cola->frente;
+    while (temp != NULL) {
+        if (criterio(temp->dato)) {
+            editar(temp->dato);
+            printf("✅ Elemento editado.\n");
+            return;
+        }
+        temp = temp->siguiente;
+    }
+    printf("❌ Elemento no encontrado.\n");
+}
+
+void cargarCola(Cola *cola, const char *nombre_archivo, size_t tam_dato) {
+    inicializarCola(cola);
+
+    FILE *archivo = fopen(nombre_archivo, "rb");
+    if (!archivo) {
+        printf("⚠ No se encontró archivo '%s'.\n", nombre_archivo);
+        return;
+    }
+
+    ColaHeader header;
+    fread(&header, sizeof(ColaHeader), 1, archivo);  // ✅ lee encabezado
+    cola->contador_ids = header.contador_ids;
+    cola->tam = header.tam;
+
+    void *buffer = malloc(tam_dato);
+    for (int i = 0; i < cola->tam; i++) {
+        if (fread(buffer, tam_dato, 1, archivo) == 1) {
+            encolar(cola, buffer, tam_dato);
+        }
+    }
+
+    free(buffer);
+    fclose(archivo);
+    printf("📂 Cola cargada desde '%s'.\n", nombre_archivo);
+}
+
+
+void guardarCola(Cola *cola, const char *nombre_archivo, size_t tam_dato) {
+    FILE *archivo = fopen(nombre_archivo, "wb");
+    if (!archivo) {
+        printf("❌ Error al abrir archivo '%s'.\n", nombre_archivo);
+        return;
+    }
+
+    ColaHeader header = {cola->contador_ids, cola->tam};
+    fwrite(&header, sizeof(ColaHeader), 1, archivo);  // ✅ guarda encabezado
+
+    Nodo *temp = cola->frente;
+    while (temp != NULL) {
+        fwrite(temp->dato, tam_dato, 1, archivo);
+        temp = temp->siguiente;
+    }
+
+    fclose(archivo);
+    printf("💾 Cola guardada en '%s'.\n", nombre_archivo);
+}
+
+
+void liberarCola(Cola *cola) {
+    Nodo *actual = cola->frente;
+    while (actual != NULL) {
+        Nodo *temp = actual;
+        actual = actual->siguiente;
+        free(temp->dato);
+        free(temp);
+    }
+    cola->frente = NULL;
+    cola->final = NULL;
+    cola->tam = 0;
+}
+
+Nodo *extraerNodoPorCriterio(Cola *cola, int (*criterio)(void *)) {
+    Nodo *actual = cola->frente;
+    Nodo *anterior = NULL;
+
+    while (actual != NULL) {
+        if (criterio(actual->dato)) {
+            // Reorganizar punteros
+            if (anterior == NULL) {
+                // Es el primer nodo
+                cola->frente = actual->siguiente;
+                if (cola->frente == NULL)
+                    cola->final = NULL;
+            } else {
+                anterior->siguiente = actual->siguiente;
+                if (actual == cola->final)
+                    cola->final = anterior;
+            }
+
+            cola->tam--;
+            return actual;  // ✅ retornar el nodo extraído
+        }
+
+        anterior = actual;
+        actual = actual->siguiente;
+    }
+
+    return NULL;  // ❌ No encontrado
+}
+
+
+// --------------------------- MENUS SECUNDARIOS ---------------------------
+
+int menu_edicion(const char *titulo, const char *campos[], int num_campos) {
+    int opcion = -1;
+    printf("\n-- Editando %s --\n", titulo);
+    for (int i = 0; i < num_campos; i++) {
+        printf("%d. Editar %s\n", i + 1, campos[i]);
+    }
+    printf("0. Volver\n");
+    printf("Seleccione una opción: ");
+
+    if (!leer_int_seguro(&opcion)) {
+        printf("❌ Entrada inválida.\n");
+        return -1;
+    }
+
+    if (opcion < 0 || opcion > num_campos) {
+        printf("❌ Opción inválida.\n");
+        return -1;
+    }
+
+    return opcion;
+}
+
+const char* obtener_nombre_unidad(Unidad u) {
+    switch (u) {
+        case KG: return "KG";
+        case G: return "G";
+        case M3: return "M3";
+        case CM3: return "CM3";
+        case KM: return "KM";
+        case H: return "Horas";
+        case MIN: return "Minutos";
+        default: return "Desconocido";
+    }
+}
+
+
+// --------------------------- SUBMENUS ---------------------------
+void submenu_categoria(Cola *colaCat) {
+    int op = 0;
+    do {
+        printf("\n-- SUBMENÚ CATEGORÍA --\n");
+        printf("1. Insertar\n2. Editar\n3. Listar\n0. Volver\nSeleccione una opción: ");
+        if (!leer_int_seguro(&op)) continue;
+
+        switch (op) {
+            case 1: {
+                char nombre[CHAR_S] = {0};
+                printf("Nombre categoría: ");
+                fgets(nombre, sizeof(nombre), stdin);
+                nombre[strcspn(nombre, "\n")] = 0;
+                if (es_texto_valido(nombre, "Nombre Categoría"))
+                    if(!encolar(colaCat, crearCategoria(colaCat,nombre),sizeof(Categoria)))
+                         printf("❌ ¡Error! No se pudo insertar la direccion.\n");
+            } break;
+            case 2: editarCola(colaCat,criterioCategoriaPorID,editarCategoriaNombre); break;
+            case 3: listarCola(colaCat,mostrarCategoria); break;
+            case 0: printf("↩ Volviendo al menú anterior.\n"); break;
+            default: printf("❌ Opción inválida.\n");
+        }
+    } while (op != 0);
+}
+
+void submenu_localidad(Cola*colaLoc) {
+    int op = 0;
+    do {
+        printf("\n-- SUBMENÚ LOCALIDAD --\n");
+        printf("1. Insertar\n2. Editar\n3. Listar\n0. Volver\nSeleccione una opción: ");
+        if (!leer_int_seguro(&op)) continue;
+
+        switch (op) {
+            case 1: {
+                char nombre[CHAR_S];
+                printf("Nombre localidad: ");
+                fgets(nombre, sizeof(nombre), stdin);
+                nombre[strcspn(nombre, "\n")] = 0;
+                if (es_texto_valido(nombre, "Nombre Localidad")) {
+                    Coordenadas coor = pedir_coordenadas();
+                    if (!encolar(colaLoc, crearLocalidad(colaLoc,nombre,coor),sizeof(Localidad)))
+                        printf("❌ ¡Error! No se pudo insertar.\n");
+                }
+            } break;
+            case 2: editarCola(colaLoc,criterioLocalidadPorID,editarLocalidad); break;
+            case 3: listarCola(colaLoc,mostrarLocalidad); break;
+            case 0: printf("↩ Volviendo al menú anterior.\n"); break;
+            default: printf("❌ Opción inválida.\n");
+        }
+    } while (op != 0);
+}
+
+void submenu_producto(Cola *colaProd, Cola *colaCat) {
+    int op = 0;
+    do {
+        printf("\n-- SUBMENÚ PRODUCTO --\n");
+        printf("1. Insertar\n2. Editar\n3. Eliminar (marcar inactivo)\n4. Listar\n0. Volver\nSeleccione una opción: ");
+        if (!leer_int_seguro(&op)) continue;
+
+        switch (op) {
+            case 1: {
+                char nombre[CHAR_S] = {0};
+                printf("Nombre producto: ");
+                fgets(nombre, sizeof(nombre), stdin);
+                nombre[strcspn(nombre, "\n")] = 0;
+                if (!es_texto_valido(nombre, "Nombre Producto")) break;
+
+                printf("Ingrese valor económico: ");
+                float valor = 0;
+                if (!leer_float_seguro(&valor)) {
+                    printf("❌ Entrada inválida.\n");
+                    break;
+                }
+
+                puts("--Peso--");
+                Medida peso = pedir_medida((Unidad[]){KG, G}, 2, "Peso");
+
+                puts("--Volumen--");
+                Medida volumen = pedir_medida((Unidad[]){M3, CM3}, 2, "Volumen");
+
+                printf("Ingrese stock inicial: ");
+                int stock = 0;
+                if (!leer_int_seguro(&stock)) {
+                    printf("❌ Entrada inválida.\n");
+                    break;
+                }
+
+                puts("----------");
+                    listarCola(colaCat, mostrarCategoria);
+                printf("Seleccione una categoría existente: ");
+
+                int idCat = 0;
+                if (!leer_int_seguro(&idCat)) {
+                    printf("❌ Entrada inválida.\n");
+                    break;
+                }
+                Categoria *categoria_seleccionada = buscarCategoria(colaCat,idCat);
+
+                if (!categoria_seleccionada) {
+                    printf("❌ Categoría no encontrada.\n");
+                    break;
+                }
+                if(!encolar(colaProd, crearProducto(colaProd, nombre, categoria_seleccionada, valor, peso, volumen, stock), sizeof(Producto)))
+                    printf("❌ ¡Error! No se pudo insertar la direccion.\n");
+            } break;
+            case 2: editarCola(colaProd, criterioProductoPorID, editarProducto); break;
+            case 3: editarCola(colaProd, criterioProductoPorID, eliminarProducto); break;
+            case 4: listarCola(colaProd, mostrarProducto); break;
+            case 0: printf("↩ Volviendo al menú anterior.\n"); break;
+            default: printf("❌ Opción inválida.\n");
+        }
+    } while (op != 0);
+}
+
+/*
+void submenu_cliente(Cola *colaCliente, Cola *colaLoc, Cola *colaDirecc) {
+    int op;
+    do {
+        printf("\n-- SUBMENÚ CLIENTE --\n");
+        printf("1. Insertar cliente\n");
+        printf("2. Agregar direcciones a cliente\n");
+        printf("3. Editar dirección de cliente\n");
+        printf("4. Eliminar dirección de cliente (desactivar)\n");
+        printf("5. Listar clientes con direcciones\n");
+        printf("0. Volver\nSeleccione una opción: ");
+        if (!leer_int_seguro(&op)) continue;
+
+        switch (op) {
+            case 1: {
+                char nombre[CHAR_S];
+                printf("Nombre cliente: ");
+                fgets(nombre, sizeof(nombre), stdin);
+                nombre[strcspn(nombre, "\n")] = 0;
+                if (!es_texto_valido(nombre, "Nombre Cliente")) break;
+
+                Nodo* aux = encolar(colaCliente, crearCliente(colaCliente, nombre), sizeof(Cliente));
+                if (!aux)
+                    printf("❌ ¡Error! No se pudo insertar.\n");
+            } break;
+
+            case 2: {
+                listarCola(colaCliente, mostrarCliente);
+                int idCli = 0;
+                printf("Ingrese ID del cliente para agregar direcciones: ");
+                if (!leer_int_seguro(&idCli)) break;
+
+                Cliente *cliente_encontrado = buscarCliente(colaCliente,idCli);
+
+                if (!cliente_encontrado) {
+                    printf("❌ Cliente no encontrado.\n");
+                    break;
+                }
+                agregarDireccionesACliente(cliente_encontrado, colaLoc, colaDirecc);
+            } break;
+
+            case 3: {
+                editarCola(colaCliente,criterioClientePorID,editarCliente);
+            } break;
+
+        case 4: {
+            listarCola(colaCliente, mostrarCliente);
+            int idCli;
+            printf("Ingrese ID del cliente: ");
+            if (!leer_int_seguro(&idCli)) break;
+
+            Nodo *temp = colaCliente->frente;
+            Cliente *cliente_encontrado = NULL;
+            while (temp != NULL) {
+                Cliente *c = (Cliente *)temp->dato;
+                if (c->id == idCli) {
+                    cliente_encontrado = c;
+                    break;
+                }
+                temp = temp->siguiente;
+            }
+
+            if (cliente_encontrado) {
+                // 1. Mostrar las direcciones del cliente
+                Nodo *nodoActual = cliente_encontrado->direcciones.frente;
+                printf("📋 Direcciones del cliente:\n");
+                while (nodoActual != NULL) {
+                    Nodo *nodoDir = *(Nodo **)nodoActual->dato;
+                    Direccion *d = (Direccion *)nodoDir->dato;
+                    if (d->activo) {
+                        Localidad *loc = (Localidad *)((Nodo *)d->id_localidad)->dato;
+                        printf("ID Dir: %d | Calle: %s | Número: %s | Colonia: %s | Ref: %s | Localidad: %s\n",
+                            d->id, d->calle, d->numero, d->colonia, d->referencias, loc->nombre);
+                    }
+                    nodoActual = nodoActual->siguiente;
+                }
+
+                // 2. Extraer el nodo del cliente que apunta a la dirección deseada
+                Nodo *nodoExtraido = extraerNodoPorCriterio(&cliente_encontrado->direcciones, criterioDireccionPorID);
+
+                if (nodoExtraido) {
+                    Nodo *nodoDireccionGlobal = *(Nodo **)nodoExtraido->dato;
+                    Direccion *d = (Direccion *)nodoDireccionGlobal->dato;
+
+                    // 3. Desactivar la dirección global
+                    d->activo = 0;
+
+                    // 4. Liberar el nodo de la cola interna
+                    free(nodoExtraido->dato);  // liberar el puntero a Nodo *
+                    free(nodoExtraido);
+                    cliente_encontrado->direcciones.tam--;
+
+                    printf("✅ Dirección desactivada y referencia eliminada del cliente.\n");
+                } else {
+                    printf("❌ No se encontró la dirección en el cliente.\n");
+                }
+            } else {
+                printf("❌ Cliente no encontrado.\n");
+            }
+        } break;
+
+
+            case 5: listarCola(colaCliente, mostrarCliente); break;
+
+            case 0: printf("↩ Volviendo al menú anterior.\n"); break;
+
+            default: printf("❌ Opción inválida.\n");
+        }
+    } while (op != 0);
+}
+*/
+// --------------------------- MENU PRINCIPAL ---------------------------
+
+void menu_admin(Cola *colaCat, Cola *colaLoc, Cola *colaProd){//}, Cola *colaCliente, Cola *colaDirecc) {
+    int op;
+    do {
+        printf("\n=== MENÚ ADMINISTRADOR ===\n");
+        printf("1. Categoría\n2. Localidad\n3. Producto\n4. Clientes y Direcciones\n0. Salir\nSeleccione una opción: ");
+        if (!leer_int_seguro(&op)) 
+            continue;
+
+        switch (op) {
+            case 1: submenu_categoria(colaCat); break;
+            case 2: submenu_localidad(colaLoc); break;
+            case 3: submenu_producto(colaProd,colaCat); break;
+            //case 4: submenu_cliente(colaCliente,colaLoc,colaDirecc); break;
+            case 0: printf("👋 Saliendo modo Admin\n"); break;
+            default: printf("❌ Opción inválida.\n");
+        }
+    } while (op != 0);
+}
+
 int main() {
-    SetConsoleOutputCP(65001); // Cambiar código de página a UTF-8 (para que se vean los emojis)
+    SetConsoleOutputCP(65001); // Cambiar código de página a UTF-8
 
-    // Ejemplo para peso
-    Unidad opciones_peso[] = {KG, G};
-    Medida peso = pedir_medida(opciones_peso, 2, "Peso");
+    Cola colaCat;
+    Cola colaLoc;
+    Cola colaProd;
+    // Cola colaCliente;
+    // Cola colaDirecc;
 
-    printf("✅ Medida ingresada: %.2f (Unidad %d)\n", peso.valor, peso.unidad);
+    inicializarCola(&colaCat);
+    inicializarCola(&colaLoc);
+    inicializarCola(&colaProd);
+    // inicializarCola(&colaCliente);
+    // inicializarCola(&colaDirecc);
 
-    // Ejemplo para coordenadas
-    Coordenadas coor = pedir_coordenadas();
-    printf("✅ Coordenadas ingresadas: Lat %.4f, Lon %.4f\n", coor.lat, coor.lon);
+    // Cargar datos al inicio
+    cargarCola(&colaCat, "categorias.bin",sizeof(Categoria));
+    cargarCola(&colaLoc, "localidades.bin",sizeof(Localidad));
+    cargarCola(&colaProd, "productos.bin",sizeof(Producto));
+    // cargarCola(&colaCliente, "clientes.bin",sizeof(Cliente));
+    // cargarCola(&colaDirecc, "direcciones.bin",sizeof(Direccion));
+
+
+    reconstruirReferenciasProducto(&colaProd,&colaCat);
+
+    menu_admin(&colaCat, &colaLoc, &colaProd);//, &colaCliente, &colaDirecc);
+
+    
+    limpiarReferenciasProducto(&colaProd);
+
+    // Guardar datos al salir
+    guardarCola(&colaCat, "categorias.bin",sizeof(Categoria));
+    guardarCola(&colaLoc, "localidades.bin",sizeof(Localidad));
+    guardarCola(&colaProd, "productos.bin",sizeof(Producto));
+    // guardarCola(&colaCliente, "clientes.bin",sizeof(Cliente));
+    // guardarCola(&colaDirecc, "direcciones.bin",sizeof(Direccion));
+
+    liberarCola(&colaCat);
+    liberarCola(&colaLoc);
+    liberarCola(&colaProd);
+    // liberarCola(&colaCliente);
+    // liberarCola(&colaDirecc);
 
     return 0;
 }
