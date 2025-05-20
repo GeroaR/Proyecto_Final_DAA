@@ -1094,6 +1094,7 @@ void cargarCola(Cola *cola, const char *nombre_archivo, size_t tam_dato) {
     printf("📂 Cola cargada desde '%s'.\n", nombre_archivo);
 }
 
+
 void guardarCola(Cola *cola, const char *nombre_archivo, size_t tam_dato) {
     FILE *archivo = fopen(nombre_archivo, "wb");
     if (!archivo) {
@@ -1113,6 +1114,7 @@ void guardarCola(Cola *cola, const char *nombre_archivo, size_t tam_dato) {
     fclose(archivo);
     printf("💾 Cola guardada en '%s'.\n", nombre_archivo);
 }
+
 
 void liberarCola(Cola *cola) {
     Nodo *actual = cola->frente;
@@ -1309,6 +1311,7 @@ void submenu_producto(Cola *colaProd, Cola *colaCat) {
     } while (op != 0);
 }
 
+
 void submenu_cliente(Cola *colaCliente, Cola *colaLoc, Cola *colaDirecc) {
     int op;
     do {
@@ -1396,6 +1399,7 @@ void submenu_cliente(Cola *colaCliente, Cola *colaLoc, Cola *colaDirecc) {
         }
     } while (op != 0);
 }
+
 
 // --------------------------- MENU PRINCIPAL ---------------------------
 
