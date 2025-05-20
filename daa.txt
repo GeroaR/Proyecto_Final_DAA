@@ -2,13 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <windows.h>
+//#include <windows.h>
 #define NUM_MAX_PEDIDOS CHAR_M
 #define CHAR_S 30
 #define CHAR_M 60
 #define CHAR_G 120
-#define CHARSET 128
-#define NUM_MAX_DEMANDAS 50
+
+#define NUM_MAX_DEMANDAS 100
 
 //esta puede variar de acuerdo al maximo o minimo de un camion
 int NUM_MAX_CARGA_PESO_KG = 500; 
@@ -21,19 +21,8 @@ struct  PedidosxDireccion;
 
 struct Nodo;
 struct Cola;
-struct TrieNode;
 
 struct Cola colaLoc;
-struct Cola colaCamion;
-struct Cola colaCat;
-struct Cola colaProd;
-struct Cola colaCliente;
-struct Cola colaDirecc;
-struct Cola colaRuta;
-
-struct TrieNode *trieProd;
-int trie_actualizado = 1;  // bandera para saber si necesita reconstrucción
-
 
 //prioridad por numero de demanda
 
@@ -108,16 +97,13 @@ Para buscar productos de acuerdo a categorías:
 */
 
 typedef struct {
-    int id;
-    Producto *R_producto; //*R_Producto
-    int id_producto;
+    Producto *id_producto; //*R_Producto
     int cantidad; //cuantas unidades
 } Pedido;
 
 typedef struct {
     int id;
-    int id_direccion;
-    Direccion *R_direccion; //R_Direccion -> *R_Localidad (a cuál dirección del cliente)
+    Direccion *id_direccion; //R_Direccion -> *R_Localidad (a cuál dirección del cliente)
 
     Pedido pedidos[NUM_MAX_PEDIDOS]; //ARRAY de pedidos
     int num_pedidos;
@@ -134,35 +120,16 @@ Historial de Pedidos del Cliente
 */
 
 // -------------------------------
-typedef struct {
-    int id_producto;
-    int cantidad;
-    Producto *R_producto;
-} CargaProducto;
 
 typedef struct {
     int id;
-    int id_camion;
-    int id_direccion;
-    Direccion *R_direccion;
-
-    CargaProducto productos[NUM_MAX_PEDIDOS];
-    int num_productos;
-
-    float total_valor;
-    Medida total_peso;
-    Medida total_volumen;
-} CargaCamion;
-
-typedef struct {
-    int id;
-    int id_camion;
-    CargaCamion entregas[NUM_MAX_DEMANDAS];
-    int num_entregas;
-    float total_valor;
-    float tiempo_estimado;
-} RutaCamion;
-
+    PedidosxDireccion *pedidos_clientes; //*R_Pedidos_Clientes x Localidad
+    int num_pedidosxdireccion;
+    int total_productos;
+    float total_valor; //total a ganar
+    Medida total_peso; //total de KG/G
+    Medida total_volumen; //total de M3/CM3
+} DemandasxLocalidad;
 
 //structs LOCALIDAD, CARRETERA y RUTA
 typedef struct Localidad{
@@ -173,15 +140,22 @@ typedef struct Localidad{
 } Localidad;
 
 typedef struct {
-    int id;
-    Localidad *R_origen; //*R_Localidad
-    int id_origen;
-    Localidad *R_destino; //*R_Localidad
-    int id_destino;
+    int *id_origen; //*R_Localidad
+    int *id_destino; //*R_Localidad
     Medida distancia; //km
     float tiempo; //horas
     float penalizacion; //factor de tráfico
 } Carretera;
+
+typedef struct {
+    int id;
+    int id_camion;
+    int *demandasxlocalidad; //en el arreglo debe coincidir la localidad con la demanda
+    int *carreteras;
+    int total_paradas;
+    int total_tiempo;
+    int total_distancia;
+} Ruta; //el camión va recorriendo las carreteras en cierto tiempo, llega, pasa cierto tiempo y se marca completado en los pedidos.
 
 // -------------------------------
 
@@ -190,8 +164,10 @@ typedef struct {
     int id;
     Medida capacidad_peso;
     Medida capacidad_volumen;
+    Ruta *historial_rutas;
     EstadoCamion estado;
 } Camion; //COLA
+
 
 // COLAS (Básicos)
 typedef struct Nodo{
@@ -218,12 +194,6 @@ typedef struct {
     Cola direcciones;
     int num_pedidos; //cantidad de pedidos realizados
 } Cliente; //COLA
-
-
-typedef struct TrieNode {
-    struct TrieNode *hijos[CHARSET];
-    Producto *producto;  // Referencia al producto
-} TrieNode;
 
 void limpiar_buffer();
 int leer_float_seguro(float *numero);
@@ -289,16 +259,13 @@ void guardarCola(Cola *cola, const char *nombre_archivo, size_t tam_dato);
 void liberarCola(Cola *cola);
 Nodo *extraerNodoPorCriterio(Cola *cola, int (*criterio)(void *));
 
-void menu_admin();
 int menu_edicion(const char *titulo, const char *campos[], int num_campos);
 const char* obtener_nombre_unidad(Unidad u);
-const char* obtener_nombre_estado_camion(EstadoCamion e);
-const char* obtener_nombre_estado_pedido(EstadoPedidos e);
 
 void submenu_categoria(Cola *colaCat);
 void submenu_localidad(Cola*colaLoc);
 void submenu_cliente(Cola *colaCliente, Cola *colaLoc, Cola *colaDirecc);
-void menu_inventario(Cola *colaCat, Cola *colaLoc, Cola *colaProd, Cola *colaCliente, Cola *colaDirecc, Cola *colaCamion);
+void menu_admin(Cola *colaCat, Cola *colaLoc, Cola *colaProd, Cola *colaCliente, Cola *colaDirecc);
 
 // --------------------------- FUNCIONES PARA EVITAR ERROR DE INSERCION ---------------------------
 
@@ -567,7 +534,6 @@ void editarLocalidad(void *dato) {
 }
 
 // --------------------------- FUNCIONES PRODUCTO ---------------------------
-
 Producto* crearProducto(Cola *cola, char nombre[], Categoria *R_categoria, float valor, Medida peso, Medida volumen, int stock) {
     Producto *nuevo = (Producto *)malloc(sizeof(Producto));
     if (!nuevo)
@@ -621,7 +587,6 @@ void editarProducto(void *dato) {
                 fgets(p->nombre, sizeof(p->nombre), stdin);
                 p->nombre[strcspn(p->nombre, "\n")] = 0;
                 printf("✅ Nombre actualizado.\n");
-                trie_actualizado = 0;
                 break;
             case 2:
                 printf("Nuevo valor económico: ");
@@ -657,7 +622,6 @@ void eliminarProducto(void *dato) {
     Producto *p = (Producto *)dato;
     p->estado = 0;
     printf("🗑️ Producto marcado como inactivo.\n");
-    trie_actualizado = 0;
 }
 
 void reconstruirReferenciasProducto(Cola *productos, Cola *categorias) {
@@ -758,6 +722,7 @@ Cliente_Direccion *buscarClienteDireccion(Cola *colaClienteDir, int idDirecc){
     }
     return NULL;
 }
+
 
 // Función para editar producto con submenú de campos
 void editarClienteDireccion(void *dato) {
@@ -895,6 +860,7 @@ void editarCliente(void *dato) {
     } while (opcion != 0);
 }
 
+
 Cliente *buscarCliente(Cola *cola, int id_buscar){
     Nodo *temp = cola->frente;
     Cliente *cliente_encontrado = NULL;
@@ -1026,148 +992,6 @@ void limpiarReferenciasClienteDireccion(Cola *colaCliente, Cola *colaDirecc) {
 }
 
 
-// --------------------------- FUNCIONES CAMION ---------------------------
-Camion* crearCamion(Cola *cola, Medida capacidad_peso, Medida capacidad_volumen) {
-    Camion *nuevo = (Camion *)malloc(sizeof(Camion));
-    cola->contador_ids++;
-    nuevo->id = cola->contador_ids;
-    nuevo->capacidad_peso = capacidad_peso;
-    nuevo->capacidad_volumen = capacidad_volumen;
-    nuevo->estado = 0;
-    return nuevo;
-}
-
-int criterioCamionPorID(void *dato) {
-    Camion *c = (Camion *)dato;
-    int id;
-    printf("Ingrese el ID del camión: ");
-    if (!leer_int_seguro(&id)) {
-        printf("❌ Entrada inválida.\n");
-        return 0;
-    }
-    return c->id == id;
-}
-
-void mostrarCamion(void *dato) {
-    Camion *c = (Camion *)dato;
-    printf("ID: %d | Estado: %s", c->id,obtener_nombre_estado_camion(c->estado));
-    printf(" | Capacidad Peso: %.2f %s | Volumen: %.2f %s\n",
-        c->capacidad_peso.valor, obtener_nombre_unidad(c->capacidad_peso.unidad),
-        c->capacidad_volumen.valor, obtener_nombre_unidad(c->capacidad_volumen.unidad));
-}
-
-void editarCamion(void *dato) {
-    Camion *c = (Camion *)dato;
-    int opcion = 0;
-    const char *campos[] = {"capacidad peso", "capacidad volumen", "estado"};
-
-    do {
-        opcion = menu_edicion("Camión", campos, 3);
-        if (opcion == -1) continue;
-
-        switch (opcion) {
-            case 1:
-                puts("--Nueva Capacidad de Peso--");
-                c->capacidad_peso = pedir_medida((Unidad[]){KG, G}, 2, "Capacidad de Peso");
-                break;
-            case 2:
-                puts("--Nueva Capacidad de Volumen--");
-                c->capacidad_volumen = pedir_medida((Unidad[]){M3, CM3}, 2, "Capacidad de Volumen");
-                break;
-            case 3:
-                printf("Seleccione nuevo estado:\n 0. Disponible\n 1. En Ruta\n 2. Mantenimiento\n Opción: ");
-                int est = 0;
-                if (leer_int_seguro(&est) && est >= 0 && est <= 2) {
-                    c->estado = (EstadoCamion)est;
-                } else {
-                    printf("❌ Estado inválido.\n");
-                }
-                break;
-            case 0:
-                printf("↩ Volviendo al menú anterior.\n");
-                break;
-            default:
-                printf("❌ Opción inválida.\n");
-        }
-    } while (opcion != 0);
-}
-
-
-// --------------------------- FUNCIONES CARRETERA ---------------------------
-
-Carretera* crearCarretera(Cola *cola, Localidad* R_origen, Localidad* R_destino, Medida distancia, float tiempo, float penalizacion) {
-    Carretera *nuevo = (Carretera *)malloc(sizeof(Carretera));
-    nuevo->id = cola->contador_ids++;
-    nuevo->id_origen = R_origen->id;
-    nuevo->id_destino = R_destino->id;
-    nuevo->R_origen = R_origen;
-    nuevo->R_destino = R_destino;
-    nuevo->distancia = distancia;
-    nuevo->tiempo = tiempo;
-    nuevo->penalizacion = penalizacion;
-    return nuevo;
-}
-
-void mostrarCarretera(void *dato) {
-    Carretera *c = (Carretera *)dato;
-    printf("ID: %d | Origen: %d | Destino: %d | Distancia: %.2f KM | Tiempo: %.2f h | Penalización: %.2f\n",
-           c->id, c->id_origen, c->id_destino, c->distancia.valor, c->tiempo, c->penalizacion);
-}
-
-int criterioCarreteraPorID(void *dato) {
-    Carretera *c = (Carretera *)dato;
-    int id;
-    printf("Ingrese el ID de la carretera: ");
-    if (!leer_int_seguro(&id)) return 0;
-    return c->id == id;
-}
-
-
-// --------------------------- FUNCIONES TRIE ---------------------------
-TrieNode *crearNodoTrie() {
-    TrieNode *nodo = (TrieNode *)calloc(1, sizeof(TrieNode));
-    return nodo;
-}
-
-void insertarProductoTrie(TrieNode *raiz, const char *nombre, Producto *producto) {
-    TrieNode *actual = raiz;
-    for (int i = 0; nombre[i]; i++) {
-        unsigned char c = nombre[i];
-        if (!actual->hijos[c])
-            actual->hijos[c] = crearNodoTrie();
-        actual = actual->hijos[c];
-    }
-    actual->producto = producto;
-}
-
-void reconstruirTrieProductos(Cola *colaProd, TrieNode *raiz) {
-    Nodo *temp = colaProd->frente;
-    while (temp) {
-        Producto *p = (Producto *)temp->dato;
-        insertarProductoTrie(raiz, p->nombre, p);
-        temp = temp->siguiente;
-    }
-}
-
-Producto *buscarProductoTrie(TrieNode *raiz, const char *nombre) {
-    TrieNode *actual = raiz;
-    for (int i = 0; nombre[i]; i++) {
-        unsigned char c = nombre[i];
-        if (!actual->hijos[c]) return NULL;
-        actual = actual->hijos[c];
-    }
-    return actual->producto;
-}
-
-void liberarTrie(TrieNode *nodo) {
-    if (!nodo) return;
-    for (int i = 0; i < 128; i++) {
-        if (nodo->hijos[i]) {
-            liberarTrie(nodo->hijos[i]);
-        }
-    }
-    free(nodo);
-}
 
 
 // --------------------------- FUNCIONES COLAS ---------------------------
@@ -1256,9 +1080,10 @@ void cargarCola(Cola *cola, const char *nombre_archivo, size_t tam_dato) {
     ColaHeader header;
     fread(&header, sizeof(ColaHeader), 1, archivo);  // ✅ lee encabezado
     cola->contador_ids = header.contador_ids;
+    cola->tam = header.tam;
 
     void *buffer = malloc(tam_dato);
-    for (int i = 0; i < header.tam; i++) {
+    for (int i = 0; i < cola->tam; i++) {
         if (fread(buffer, tam_dato, 1, archivo) == 1) {
             encolar(cola, buffer, tam_dato);
         }
@@ -1268,6 +1093,7 @@ void cargarCola(Cola *cola, const char *nombre_archivo, size_t tam_dato) {
     fclose(archivo);
     printf("📂 Cola cargada desde '%s'.\n", nombre_archivo);
 }
+
 
 void guardarCola(Cola *cola, const char *nombre_archivo, size_t tam_dato) {
     FILE *archivo = fopen(nombre_archivo, "wb");
@@ -1288,6 +1114,7 @@ void guardarCola(Cola *cola, const char *nombre_archivo, size_t tam_dato) {
     fclose(archivo);
     printf("💾 Cola guardada en '%s'.\n", nombre_archivo);
 }
+
 
 void liberarCola(Cola *cola) {
     Nodo *actual = cola->frente;
@@ -1365,24 +1192,6 @@ const char* obtener_nombre_unidad(Unidad u) {
         case KM: return "KM";
         case H: return "Horas";
         case MIN: return "Minutos";
-        default: return "Desconocido";
-    }
-}
-
-const char* obtener_nombre_estado_camion(EstadoCamion e) {
-    switch (e) {
-        case DISPONIBLE: return "Disponible";
-        case EN_RUTA: return "Ocupado";
-        case MANTENIMIENTO: return "Fuera de Serivicio";
-        default: return "Desconocido";
-    }
-}
-
-const char* obtener_nombre_estado_pedido(EstadoPedidos e) {
-    switch (e) {
-        case EN_ESPERA: return "En espera";
-        case EN_CAMINO: return "El pedido está en camino";
-        case COMPLETADO: return "Entragado";
         default: return "Desconocido";
     }
 }
@@ -1491,8 +1300,7 @@ void submenu_producto(Cola *colaProd, Cola *colaCat) {
                     break;
                 }
                 if(!encolar(colaProd, crearProducto(colaProd, nombre, categoria_seleccionada, valor, peso, volumen, stock), sizeof(Producto)))
-                    printf("❌ ¡Error! No se pudo insertar el Producto.\n");
-                trie_actualizado = 0;
+                    printf("❌ ¡Error! No se pudo insertar la direccion.\n");
             } break;
             case 2: editarCola(colaProd, criterioProductoPorID, editarProducto); break;
             case 3: editarCola(colaProd, criterioProductoPorID, eliminarProducto); break;
@@ -1503,18 +1311,18 @@ void submenu_producto(Cola *colaProd, Cola *colaCat) {
     } while (op != 0);
 }
 
+
 void submenu_cliente(Cola *colaCliente, Cola *colaLoc, Cola *colaDirecc) {
     int op;
     do {
         printf("\n-- SUBMENÚ CLIENTE --\n");
         printf("1. Insertar cliente\n2. Agregar direcciones a cliente\n3. Editar cliente\n");
-        printf("4. Eliminar dirección (desactivar)\n5. Eliminar cliente\n");
-        printf("\n6. Listar clientes con direcciones\n7. Listar Direcciones\n0. Volver\nSeleccione una opción: ");
+        printf("4. Eliminar dirección (desactivar) o cliente\n5. Listar clientes con direcciones\n6. Listar Direcciones\n0. Volver\nSeleccione una opción: ");
         if (!leer_int_seguro(&op)) continue;
 
         switch (op) {
             case 1: {
-                char nombre[CHAR_S] = {0};
+                char nombre[CHAR_S];
                 printf("Nombre cliente: ");
                 fgets(nombre, sizeof(nombre), stdin);
                 nombre[strcspn(nombre, "\n")] = 0;
@@ -1544,162 +1352,50 @@ void submenu_cliente(Cola *colaCliente, Cola *colaLoc, Cola *colaDirecc) {
             } break;
 
         case 4: {
-                listarCola(colaCliente, mostrarCliente);
-
-                Cliente *cliente_encontrado = buscarCliente(colaCliente,criterioClientePorID(colaCliente));
-
-                if(!cliente_encontrado){
-                    printf("❌ Cliente no encontrado.\n");
-                    break;
-                }
-
-                // 1. Mostrar las direcciones del cliente
-                printf("📋 Direcciones del cliente:\n");
-                listarCola(&cliente_encontrado->direcciones,mostrarClienteDireccion);
-                int idDir = 0;
-                printf("Ingrese ID de la direccion: ");
-                if (!leer_int_seguro(&idDir)) 
-                    break;
-
-                Nodo* nodoExtraido = extraerNodoPorCriterio(&cliente_encontrado->direcciones,criterioClienteDireccionPorID);
-
-                Nodo *nodoDireccionGlobal = *(Nodo **)nodoExtraido->dato;
-                Direccion *d = (Direccion *)nodoDireccionGlobal->dato;
-
-                // 3. Desactivar la dirección global
-                d->activo = 0;
-
-                // 4. Liberar el nodo de la cola interna
-                free(nodoExtraido->dato);  // liberar el puntero a Nodo *
-                free(nodoExtraido);
-                printf("✅ Dirección desactivada y referencia eliminada del cliente.\n");
-        } break;
-
-        case 5: {
             listarCola(colaCliente, mostrarCliente);
+            int idCli = 0;
+            printf("Ingrese ID del cliente: ");
+            if (!leer_int_seguro(&idCli)) 
+                break;
 
-            Nodo* nodoExtraido = extraerNodoPorCriterio(colaCliente,criterioClientePorID);
+            Cliente *cliente_encontrado = buscarCliente(colaCliente,idCli);
+
+            if(!cliente_encontrado){
+                printf("❌ Cliente no encontrado.\n");
+                break;
+            }
+
+            // 1. Mostrar las direcciones del cliente
+            printf("📋 Direcciones del cliente:\n");
+            listarCola(&cliente_encontrado->direcciones,mostrarClienteDireccion);
+            int idDir = 0;
+            printf("Ingrese ID de la direccion: ");
+            if (!leer_int_seguro(&idDir)) 
+                break;
+
+            Nodo* nodoExtraido = extraerNodoPorCriterio(&cliente_encontrado->direcciones,criterioClienteDireccionPorID);
+
+            Nodo *nodoDireccionGlobal = *(Nodo **)nodoExtraido->dato;
+            Direccion *d = (Direccion *)nodoDireccionGlobal->dato;
+
+            // 3. Desactivar la dirección global
+            d->activo = 0;
 
             // 4. Liberar el nodo de la cola interna
             free(nodoExtraido->dato);  // liberar el puntero a Nodo *
             free(nodoExtraido);
+            cliente_encontrado->direcciones.tam--;
             
+            cliente_encontrado->direcciones.tam--;
             printf("✅ Dirección desactivada y referencia eliminada del cliente.\n");
         } break;
-
-            case 6: listarCola(colaCliente, mostrarCliente); break;
+            case 5: listarCola(colaCliente, mostrarCliente); break;
             
-            case 7: listarCola(colaDirecc, mostrarDireccion); break;
+            case 6: listarCola(colaDirecc, mostrarDireccion); break;
 
             case 0: printf("↩ Volviendo al menú anterior.\n"); break;
 
             default: printf("❌ Opción inválida.\n");
-        }
-    } while (op != 0);
-}
-
-void submenu_camion(Cola *colaCamion) {
-    int op = 0;
-    do {
-        printf("\n-- SUBMENÚ CAMIÓN --\n");
-        printf("1. Insertar\n2. Editar\n3. Listar\n0. Volver\nSeleccione una opción: ");
-        if (!leer_int_seguro(&op)) continue;
-
-        switch (op) {
-            case 1: {
-                puts("--Capacidad de Peso--");
-                Medida capacidad_peso = pedir_medida((Unidad[]){KG, G}, 2, "Capacidad de Peso");
-
-                puts("--Capacidad de Volumen--");
-                Medida capacidad_volumen = pedir_medida((Unidad[]){M3, CM3}, 2, "Capacidad de Volumen");
-
-                if(!encolar(colaCamion, crearCamion(colaCamion,capacidad_peso,capacidad_volumen),sizeof(Camion)))
-                    printf("❌ ¡Error! No se pudo insertar la direccion.\n");
-            } break;
-            case 2: editarCola(colaCamion,criterioCamionPorID,editarCamion); break;
-            case 3: listarCola(colaCamion,mostrarCamion); break;
-            case 4: {
-                listarCola(colaCamion, mostrarCamion);
-
-                Nodo* nodoExtraido = extraerNodoPorCriterio(colaCamion,criterioClientePorID);
-
-                // 4. Liberar el nodo de la cola interna
-                free(nodoExtraido->dato);  // liberar el puntero a Nodo *
-                free(nodoExtraido);
-
-            }break;
-            case 0: printf("↩ Volviendo al menú anterior.\n"); break;
-            default: printf("❌ Opción inválida.\n");
-        }
-    } while (op != 0);
-}
-
-void submenu_carreteras(Cola *colaCarretera, Cola *colaLoc) {
-    int op;
-    do {
-        printf("\n=== SUBMENÚ CARRETERAS ===\n");
-        printf("1. Insertar conexión\n");
-        printf("2. Eliminar conexión\n");
-        printf("3. Listar conexiones\n");
-        printf("0. Volver\nSeleccione una opción: ");
-        if (!leer_int_seguro(&op)) continue;
-
-        switch (op) {
-            case 1: {
-                listarCola(colaLoc, mostrarLocalidad);
-                int idOrg,idDes;
-                printf("Ingrese ID de la localidad de origen:");
-                if (!leer_int_seguro(&idOrg)) 
-                    break;
-                printf("Ingrese ID de la localidad de destino:");
-                if (!leer_int_seguro(&idDes)) 
-                    break;
-                Localidad *R_origen = buscarLocalidad(colaLoc,idOrg);
-                Localidad *R_destino = buscarLocalidad(colaLoc,idDes);
-
-                if (!R_origen || !R_destino) {
-                    printf("❌ No se encontraron ambas localidades.\n");
-                    break;
-                }
-
-                puts("--Distancia--");
-                Medida distancia = pedir_medida((Unidad[]){KM}, 1, "Distancia");
-
-                float tiempo, penalizacion;
-                printf("Tiempo estimado (en horas): ");
-                if (!leer_float_seguro(&tiempo)) break;
-                printf("Penalización (por tráfico, ej. 1.0 - 2.0): ");
-                if (!leer_float_seguro(&penalizacion)) break;
-
-                Carretera *nueva = crearCarretera(colaCarretera, R_origen, R_destino, distancia, tiempo, penalizacion);
-                encolar(colaCarretera, nueva, sizeof(Carretera));
-                printf("✅ Carretera registrada correctamente.\n");
-            } break;
-
-            case 2:{
-                listarCola(colaCarretera, mostrarCarretera);
-                Nodo *n = extraerNodoPorCriterio(colaCarretera, criterioCarreteraPorID);
-                if (n) {
-                    free(n->dato);
-                    free(n);
-                    printf("🛣️ Carretera eliminada correctamente.\n");
-                } else {
-                    printf("❌ Carretera no encontrada.\n");
-                }
-
-            }
-                break;
-
-            case 3:
-                listarCola(colaCarretera, mostrarCarretera);
-                break;
-
-            case 0:
-                printf("↩ Volviendo al menú anterior.\n");
-                break;
-
-            default:
-                printf("❌ Opción inválida.\n");
         }
     } while (op != 0);
 }
@@ -1707,11 +1403,11 @@ void submenu_carreteras(Cola *colaCarretera, Cola *colaLoc) {
 
 // --------------------------- MENU PRINCIPAL ---------------------------
 
-void menu_inventario(Cola *colaCat, Cola *colaLoc, Cola *colaProd, Cola *colaCliente, Cola *colaDirecc, Cola *colaCamion) {
-    int op = 0;
+void menu_admin(Cola *colaCat, Cola *colaLoc, Cola *colaProd, Cola *colaCliente, Cola *colaDirecc) {
+    int op;
     do {
         printf("\n=== MENÚ ADMINISTRADOR ===\n");
-        printf("1. Categoría\n2. Localidad\n3. Producto\n4. Clientes y Direcciones\n5. Camión\n0. Salir\nSeleccione una opción: ");
+        printf("1. Categoría\n2. Localidad\n3. Producto\n4. Clientes y Direcciones\n0. Salir\nSeleccione una opción: ");
         if (!leer_int_seguro(&op)) 
             continue;
 
@@ -1720,192 +1416,11 @@ void menu_inventario(Cola *colaCat, Cola *colaLoc, Cola *colaProd, Cola *colaCli
             case 2: submenu_localidad(colaLoc); break;
             case 3: submenu_producto(colaProd,colaCat); break;
             case 4: submenu_cliente(colaCliente,colaLoc,colaDirecc); break;
-            case 5: submenu_camion(colaCamion); break;
             case 0: printf("👋 Saliendo modo Admin\n"); break;
             default: printf("❌ Opción inválida.\n");
         }
     } while (op != 0);
 }
-
-
-void buscar_productoxnombre(TrieNode *trieProd){
-    if (!trie_actualizado) {
-        liberarTrie(trieProd);  // limpiar si fue reconstruido antes
-        trieProd = crearNodoTrie();
-        reconstruirTrieProductos(&colaProd, trieProd);
-        trie_actualizado = 1;  // ya está actualizado
-    }
-    char nombre[CHAR_S] = {0};
-    printf("Nombre producto: ");
-    fgets(nombre, sizeof(nombre), stdin);
-    nombre[strcspn(nombre, "\n")] = 0;
-    if (!es_texto_valido(nombre, "Nombre producto"))
-        return;
-
-    Producto *p = buscarProductoTrie(trieProd, nombre);
-    if (p) {
-        printf("✅ Producto encontrado:\n");
-        mostrarProducto(p);  // ✅ si ya tienes esta función implementada
-    } else {
-        printf("❌ Producto no encontrado.\n");
-    }
-}
-
-void ordenarProductosPorCategoria(Cola *colaProd, Cola *colaCat) {
-    int max_categorias = (colaCat->tam) + 1;
-
-    Nodo **buckets = (Nodo **)calloc(max_categorias, sizeof(Nodo *));
-    Nodo **tails = (Nodo **)calloc(max_categorias, sizeof(Nodo *));
-    Categoria **categorias = (Categoria **)calloc(max_categorias, sizeof(Categoria *));
-
-    // Mapear las categorías activas
-    Nodo *n = colaCat->frente;
-    while (n) {
-        Categoria *c = (Categoria *)n->dato;
-        if (c->estado && c->id >= 0 && c->id < max_categorias)
-            categorias[c->id] = c;
-        n = n->siguiente;
-    }
-
-    // Insertar productos ordenados alfabéticamente en sus buckets
-    Nodo *temp = colaProd->frente;
-    while (temp) {
-        Producto *p = (Producto *)temp->dato;
-        if (p->estado && p->id_categoria >= 0 && p->id_categoria < max_categorias) {
-            Nodo *nuevo = (Nodo *)malloc(sizeof(Nodo));
-            nuevo->dato = p;
-            nuevo->siguiente = NULL;
-
-            Nodo **bucket = &buckets[p->id_categoria];
-            if (!*bucket) {
-                *bucket = nuevo;
-            } else {
-                // Inserción ordenada alfabéticamente por nombre
-                Nodo *actual = *bucket, *prev = NULL;
-                while (actual && strcmp(((Producto *)actual->dato)->nombre, p->nombre) < 0) {
-                    prev = actual;
-                    actual = actual->siguiente;
-                }
-                if (!prev) {
-                    nuevo->siguiente = *bucket;
-                    *bucket = nuevo;
-                } else {
-                    nuevo->siguiente = prev->siguiente;
-                    prev->siguiente = nuevo;
-                }
-            }
-        }
-        temp = temp->siguiente;
-    }
-
-    // Imprimir productos por categoría
-    for (int i = 0; i < max_categorias; i++) {
-        if (buckets[i]) {
-            Categoria *c = categorias[i];
-            if (c)
-                printf("\n---- %s ----\n", c->nombre);
-            else
-                printf("\n---- Categoría #%d ----\n", i);
-
-            Nodo *actual = buckets[i];
-            while (actual) {
-                Producto *p = (Producto *)actual->dato;
-                printf("\tID: %d | Nombre: %s | Precio: %.2f | Stock: %d\n",
-                       p->id, p->nombre, p->valor, p->stock);
-                Nodo *lib = actual;
-                actual = actual->siguiente;
-                free(lib);  // liberar nodo temporal
-            }
-        }
-    }
-
-    free(buckets);
-    free(tails);
-    free(categorias);
-}
-
-
-void submenu_cliente_pedido(Cola *colaCliente, Cola *colaDirecc){
-    listarCola(colaCliente,mostrarCliente);
-    listarCola(colaDirecc,mostrarDireccion);
-    return;
-}
-
-void submenu_rutas(Cola *colaCliente, Cola *colaDirecc, Cola *colaRuta, Cola *colaProd){
-    listarCola(colaCliente,mostrarCliente);
-    listarCola(colaDirecc,mostrarDireccion);
-    //listarCola(colaRuta,mostrarRuta);
-    printf("%d",colaRuta->tam);
-    listarCola(colaProd,mostrarProducto);
-    return;
-}
-
-void submenu_consultas(Cola *colaCliente, Cola *colaDirecc,TrieNode *trieProd){
-    int op;
-    do {
-        puts("\n--- CONSULTAS Y REPORTES ---");
-        puts("1. Buscar Producto por Nombre");
-        puts("2. Ordenar Productos por Categoria");
-        printf("0. Volver\nSeleccione una opción: ");
-        if (!leer_int_seguro(&op)) continue;
-
-        switch (op) {
-            case 1: buscar_productoxnombre(trieProd); break;
-            case 2: ordenarProductosPorCategoria(&colaProd,&colaCat); break;
-            case 3: listarCola(colaCliente,mostrarCliente); break; //Ordenar los productos que aún no se han asignado a un camión por nombre, peso y volumen
-            case 4: listarCola(colaDirecc,mostrarDireccion); break; //Ordenar los productos que se han asignado a un camión en específico por nombre, peso y volumen
-            case 0: puts("↩ Volviendo al menú anterior."); break;
-            default: puts("❌ Opción inválida.");
-        }
-    } while (op != 0);
-}
-
-void menu_rutas_y_pedidos(Cola *colaCliente, Cola *colaDirecc, Cola *colaRuta, TrieNode *trieProd, Cola *colaProd) {
-    int op;
-    do {
-        puts("\n--- GESTIÓN DE RUTAS Y PEDIDOS ---");
-        puts("1. Clientes y Pedidos");
-        puts("2. Asignar rutas y pedidos a camiones");
-        puts("3. Consultas y Búsquedas");
-        printf("0. Volver\nSeleccione una opción: ");
-        if (!leer_int_seguro(&op)) continue;
-
-        switch (op) {
-            case 1: submenu_cliente_pedido(colaCliente, colaDirecc); break;
-            case 2: submenu_rutas(colaCliente, colaDirecc, colaRuta, colaProd); break;
-            case 3: submenu_consultas(colaCliente, colaDirecc,trieProd); break;
-            case 0: puts("↩ Volviendo al menú anterior."); break;
-            default: puts("❌ Opción inválida.");
-        }
-    } while (op != 0);
-}
-
-void menu_admin() {
-    int op = 0;
-    do {
-        puts("\n=== MENÚ ADMINISTRADOR ===");
-        puts("1. Gestión de Inventario");
-        puts("2. Gestión de Rutas y Pedidos");
-        printf("0. Salir\nSeleccione una opción: ");
-        if (!leer_int_seguro(&op)) continue;
-
-        switch (op) {
-            case 1:
-                menu_inventario(&colaCat, &colaLoc, &colaProd, &colaCliente,&colaDirecc, &colaCamion);
-                break;
-            case 2:
-                menu_rutas_y_pedidos(&colaCliente, &colaDirecc, &colaRuta, trieProd, &colaProd);
-                break;
-            case 0:
-                puts("👋 Cerrando sesión de administrador...");
-                break;
-            default:
-                puts("❌ Opción inválida.");
-        }
-    } while (op != 0);
-}
-
-// --------------------------- CREAR RELACIONES ---------------------------
 
 void asociarDireccionesPorCliente(Cola *colaCliente, Cola *colaDirecc) {
     if (colaCliente->tam == 0 || colaDirecc->tam == 0) return;
@@ -1975,50 +1490,20 @@ void asociarLocalidadesADirecciones(Cola *colaDirecc, Cola *colaLoc) {
     }
 }
 
-
-
-void cargarProductosTxt(Cola *colaProd, const char *nombre_archivo) {
-    FILE *archivo = fopen(nombre_archivo, "r");
-    if (!archivo) {
-        printf("⚠ No se encontró archivo '%s'.\n", nombre_archivo);
-        return;
-    }
-
-    Producto p;
-    int unidad_temp1, unidad_temp2;
-
-    while (fscanf(archivo, "%d|%d|%49[^|]|%f|%f|%d|%f|%d|%d|%d\n",
-        &p.id, &p.id_categoria, p.nombre, &p.valor,
-        &p.peso.valor, &unidad_temp1,
-        &p.volumen.valor, &unidad_temp2,
-        &p.stock, &p.estado) == 10) {
-
-        p.peso.unidad = (Unidad)unidad_temp1;
-        p.volumen.unidad = (Unidad)unidad_temp2;
-        encolar(colaProd, &p, sizeof(Producto));
-
-        if (p.id >= colaProd->contador_ids)
-            colaProd->contador_ids = p.id + 1;
-    }
-
-    fclose(archivo);
-    printf("📂 Productos cargados desde texto '%s'\n", nombre_archivo);
-}
-
-
 int main() {
-    SetConsoleOutputCP(65001); // Cambiar código de página a UTF-8
+    //SetConsoleOutputCP(65001); // Cambiar código de página a UTF-8
+
+    Cola colaCat;
+    //Cola colaLoc;
+    Cola colaProd;
+    Cola colaCliente;
+    Cola colaDirecc;
 
     inicializarCola(&colaCat);
     inicializarCola(&colaLoc);
     inicializarCola(&colaProd);
     inicializarCola(&colaCliente);
     inicializarCola(&colaDirecc);
-    inicializarCola(&colaCamion);
-    inicializarCola(&colaRuta);
-
-    trieProd = NULL;  // al principio
-    trieProd = crearNodoTrie();  // Inicializa raíz del Trie
 
     // Cargar datos al inicio
     cargarCola(&colaCat, "categorias.bin",sizeof(Categoria));
@@ -2026,21 +1511,15 @@ int main() {
     cargarCola(&colaProd, "productos.bin",sizeof(Producto));
     cargarCola(&colaCliente, "clientes.bin",sizeof(Cliente));
     cargarCola(&colaDirecc, "direcciones.bin",sizeof(Direccion));
-    cargarCola(&colaCamion, "camiones.bin",sizeof(Camion));
-    cargarCola(&colaRuta, "rutas.bin",sizeof(RutaCamion));
-
-    Nodo *t = colaProd.frente;
-    while (t) {
-        insertarProductoTrie(trieProd, ((Producto *)t->dato)->nombre, t->dato);
-        t = t->siguiente;
-    }
     
+
     reconstruirReferenciasProducto(&colaProd,&colaCat);
     asociarDireccionesPorCliente(&colaCliente, &colaDirecc);
     asociarLocalidadesADirecciones(&colaDirecc, &colaLoc);
 
-    menu_admin();
+    menu_admin(&colaCat, &colaLoc, &colaProd, &colaCliente, &colaDirecc);
 
+    
     limpiarReferenciasProducto(&colaProd);
     limpiarReferenciasClienteDireccion(&colaCliente,&colaDirecc);
 
@@ -2051,20 +1530,13 @@ int main() {
     guardarCola(&colaProd, "productos.bin",sizeof(Producto));
     guardarCola(&colaCliente, "clientes.bin",sizeof(Cliente));
     guardarCola(&colaDirecc, "direcciones.bin",sizeof(Direccion));
-    guardarCola(&colaCamion, "camiones.bin",sizeof(Camion));
 
-
-    liberarTrie(trieProd);
 
     liberarCola(&colaCat);
     liberarCola(&colaLoc);
     liberarCola(&colaProd);
     liberarCola(&colaCliente);
     liberarCola(&colaDirecc);
-
-    liberarCola(&colaCamion);
-    liberarCola(&colaRuta);
-
 
     return 0;
 }
