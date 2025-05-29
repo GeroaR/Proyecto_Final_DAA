@@ -1824,6 +1824,9 @@ void submenu_cliente(Cola *colaCliente, Cola *colaLoc, Cola *colaDirecc) {
                 if (es_texto_valido(nombre, "Nombre Cliente"))
                     if(!encolar(colaCliente, crearCliente(colaCliente, nombre), sizeof(Cliente)))
                          printf("❌ ¡Error! No se pudo insertar la direccion.\n");
+                if (es_texto_valido(nombre, "Nombre Cliente"))
+                    if(!encolar(colaCliente, crearCliente(colaCliente, nombre), sizeof(Cliente)))
+                         printf("❌ ¡Error! No se pudo insertar la direccion.\n");
             } break;
 
             case 2: {
@@ -1842,6 +1845,7 @@ void submenu_cliente(Cola *colaCliente, Cola *colaLoc, Cola *colaDirecc) {
             } break;
 
             case 3: {
+                listarCola(colaCliente,mostrarCliente);
                 listarCola(colaCliente,mostrarCliente);
                 editarCola(colaCliente,criterioClientePorID,editarCliente);
             } break;

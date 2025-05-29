@@ -1539,6 +1539,7 @@ int main() {
     liberarCola(&colaDirecc);
 
     return 0;
+<<<<<<< HEAD
 }
 ====================================================================================================
 #include <stdio.h>
@@ -3876,3 +3877,6 @@ int main() {
 //una vez ingresados en el camión, los productos se ordenan dentro de cada camión de acuerdo al nombre, peso o volumen (en total)
 //ES POR CAMION, ELIJO EL CAMION Y DE AHI
 //los pedidos solo se guardan los que están en espera, no los que se completaron (esos se pueden insertar en un .txt, junto con la ruta)
+=======
+}
+>>>>>>> 1f14576833103d937b2b857e3be9e19d9ab4b74b
