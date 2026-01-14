@@ -681,7 +681,7 @@ void buscarProductoPorNombre(TrieNode *trieProd){
     Producto *p = buscarProductoTrie(trieProd, nombre);
     if (p) {
         printf("✅ Producto encontrado:\n");
-        mostrarProducto(p);  // ✅ si ya tienes esta función implementada
+        mostrarProducto(p);
     } else {
         printf("❌ Producto no encontrado.\n");
     }
@@ -1486,7 +1486,7 @@ Nodo *encolar(Cola *cola, void *dato, size_t tam_dato) {
     }
 
     cola->tam++;
-    return nuevo;  // ✅ retornamos el puntero al nodo insertado
+    return nuevo;  // retornamos el puntero al nodo insertado
 }
 
 void *desencolar(Cola *cola) {
@@ -1551,7 +1551,7 @@ void cargarCola(Cola *cola, const char *nombre_archivo, size_t tam_dato) {
     }
 
     ColaHeader header;
-    fread(&header, sizeof(ColaHeader), 1, archivo);  // ✅ lee encabezado
+    fread(&header, sizeof(ColaHeader), 1, archivo);  // lee encabezado
     cola->contador_ids = header.contador_ids;
 
     void *buffer = malloc(tam_dato);
@@ -1574,7 +1574,7 @@ void guardarCola(Cola *cola, const char *nombre_archivo, size_t tam_dato) {
     }
 
     ColaHeader header = {cola->contador_ids, cola->tam};
-    fwrite(&header, sizeof(ColaHeader), 1, archivo);  // ✅ guarda encabezado
+    fwrite(&header, sizeof(ColaHeader), 1, archivo);  // guarda encabezado
 
     Nodo *temp = cola->frente;
     while (temp != NULL) {
@@ -1625,14 +1625,14 @@ Nodo *extraerNodoPorCriterio(Cola *cola, int (*criterio)(void *, int)) {
             }
 
             cola->tam--;
-            return actual;  // ✅ retornar el nodo extraído
+            return actual;  // retornar el nodo extraído
         }
 
         anterior = actual;
         actual = actual->siguiente;
     }
 
-    return NULL;  // ❌ No encontrado
+    return NULL;  // No encontrado
 }
 
 // --------------------------- MENUS SECUNDARIOS ---------------------------
@@ -1891,7 +1891,7 @@ void submenu_cliente(Cola *colaCliente, Cola *colaLoc, Cola *colaDirecc) {
 
             Nodo* nodoExtraido = extraerNodoPorCriterio(colaCliente,criterioClientePorID);
 
-            // 4. Liberar el nodo de la cola interna
+            // Liberar el nodo de la cola interna
             free(nodoExtraido->dato);  // liberar el puntero a Nodo *
             free(nodoExtraido);
             
